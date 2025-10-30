@@ -559,18 +559,83 @@ def strategy_suggestion(day: pd.DataFrame, or_info: dict, by18: dict, always_in:
 
 # ========= Summary / Snapshot =========
 
-def summary_text(symbol: str, or_info: dict, by18: dict, outlook: dict, market_open: bool) -> str:
-    # Exactly 3 sentences, intuitive
-    s1 = f"Opening range (first {or_info['bars']} bars) set {or_info['high']:.2f}/{or_info['low']:.2f} as key levels."
-    status = {"inside":"is trading inside","above":"broke above","below":"broke below"}[or_info["status"]]
-    s2 = f"Price {status} the range, which guides whether breakouts run or fade to the midpoint."
+def summary_text(
+    symbol: str,
+    or_info: dict,
+    by18: dict,
+    outlook: dict,
+    market_open: bool,
+    mm_up: Optional[float] = None,
+    mm_dn: Optional[float] = None,
+) -> str:
+    """
+    Returns a sectioned HTML snapshot:
+      - Opening Range
+      - Bar-18 Heuristics
+      - Measured-Move Context
+      - Intraday Bias
+    """
+    # Safe helpers
+    def fmt(x, nd=2):
+        try:
+            return f"{float(x):.{nd}f}"
+        except Exception:
+            return "—"
+
+    status_map = {
+        "inside": "trading inside the range",
+        "above":  "broke above the range",
+        "below":  "broke below the range",
+    }
+    status_txt = status_map.get(or_info.get("status"), "—")
+
+    # Bar-18 lines
     if by18.get("enough_bars"):
-        hi_hold = "still the day high" if by18["high_still_day_high"] else "not the day high"
-        lo_hold = "still the day low"  if by18["low_still_day_low"]  else "not the day low"
-        s3 = f"By Bar 18, the morning high is {hi_hold} and the morning low is {lo_hold}."
+        hi_hold = "still the day high" if by18.get("high_still_day_high") else "not the day high"
+        lo_hold = "still the day low"  if by18.get("low_still_day_low")  else "not the day low"
+        bar18_lines = f"""
+          <li>Morning high is {hi_hold}.</li>
+          <li>Morning low is {lo_hold}.</li>
+        """
     else:
-        s3 = "Bar-18 context is not established yet."
-    return " ".join([s1, s2, s3])
+        bar18_lines = "<li>Bar-18 context is not established yet.</li>"
+
+    # Measured moves (optional)
+    mm_up_html = fmt(mm_up) if mm_up is not None else "—"
+    mm_dn_html = fmt(mm_dn) if mm_dn is not None else "—"
+
+    # Outlook
+    bias_label = outlook.get("label", "—")
+    bull = outlook.get("bull", 0.0); rng = outlook.get("range", 0.0); bear = outlook.get("bear", 0.0)
+    bias_line = f"{bias_label} (Bull {bull:.0%} • Range {rng:.0%} • Bear {bear:.0%})"
+
+    # HTML snapshot
+    html_snapshot = f"""
+    <div>
+      <strong>Opening Range:</strong>
+      <ul style="margin-top:6px;">
+        <li>The first {or_info.get('bars', '—')} bars established <strong>{fmt(or_info.get('high'))}/{fmt(or_info.get('low'))}</strong> as key levels.</li>
+        <li>Price is <strong>{status_txt}</strong>, guiding whether breakouts run or fade toward the midpoint.</li>
+      </ul>
+
+      <strong>Bar-18 Heuristics:</strong>
+      <ul style="margin-top:6px;">
+        {bar18_lines}
+      </ul>
+
+      <strong>Measured-Move Context:</strong>
+      <ul style="margin-top:6px;">
+        <li>Upside target: <strong>{mm_up_html}</strong></li>
+        <li>Downside target: <strong>{mm_dn_html}</strong></li>
+      </ul>
+
+      <strong>Intraday Bias:</strong>
+      <ul style="margin-top:6px;">
+        <li><strong>{bias_line}</strong></li>
+      </ul>
+    </div>
+    """
+    return html_snapshot
 
 
 # =============================
@@ -611,8 +676,9 @@ if go and symbol:
           <h3>Session Snapshot</h3>
           <div>{snapshot}</div>
         </div>
-        """.format(snapshot=html.escape(summary_text(symbol, or_info, by18, outlook, market_open_state), quote=True)),
+        """.format(snapshot=summary_text(symbol, or_info, by18, outlook, market_open, mm_up=mm_up, mm_dn=mm_dn)),
         unsafe_allow_html=True)
+
 
         # --- Strategy (only if market open) or End-of-Day review (if closed)
         if market_open_state:

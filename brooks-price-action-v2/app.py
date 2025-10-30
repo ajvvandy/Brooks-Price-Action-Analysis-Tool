@@ -141,6 +141,23 @@ st.markdown(
           background-color: #333333 !important;   /* Slightly lighter on hover */
       }
 
+      /* Force Analyze button (primary) to white text on black */
+      .stApp .block-container div.stButton > button[kind="primary"],
+      .stApp button[data-testid="baseButton-primary"] {
+          color: #ffffff !important;              /* White text */
+          background-color: #000000 !important;   /* Black background */
+          border: none !important;
+          border-radius: 6px !important;
+          font-weight: 600 !important;
+          padding: 0.55rem 1.1rem !important;
+          font-size: 1rem !important;
+      }
+
+      .stApp .block-container div.stButton > button[kind="primary"]:hover,
+      .stApp button[data-testid="baseButton-primary"]:hover {
+          background-color: #333333 !important;   /* Hover shade */
+      }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -206,7 +223,7 @@ with c2:
     ).strip().upper()
 
     # Single Analyze button (white text)
-    go = st.button("Analyze", use_container_width=True)
+    go = st.button("Analyze", key="analyze_btn", type="primary", use_container_width=True)
 
 
 # =============================

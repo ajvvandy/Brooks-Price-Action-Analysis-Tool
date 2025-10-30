@@ -106,6 +106,19 @@ st.markdown(
           color: #000000 !important;
       }
     </style>
+    /* Make the Analyze button text white */
+.stButton button {
+    color: #ffffff !important;       /* White text */
+    background-color: #000000 !important; /* Optional: make button itself black */
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    border: none !important;
+    padding: 0.5rem 1.2rem !important;
+}
+
+.stButton button:hover {
+    background-color: #333333 !important; /* Slightly lighter on hover */
+}
     """,
     unsafe_allow_html=True,
 )

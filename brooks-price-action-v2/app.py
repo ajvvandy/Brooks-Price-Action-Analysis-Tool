@@ -118,6 +118,21 @@ st.markdown(
       .stButton button:hover {
           background-color: #333333 !important; /* Slightly lighter on hover */
       }
+      /* ✅ Analyze button style (white text, black background) */
+      .analyze-btn button,
+      div.stButton > button {
+          color: #ffffff !important;              /* White text */
+          background-color: #000000 !important;   /* Black background */
+          border-radius: 6px !important;
+          font-weight: 600 !important;
+          border: none !important;
+          padding: 0.55rem 1.1rem !important;
+      }
+
+      .analyze-btn button:hover,
+      div.stButton > button:hover {
+          background-color: #333333 !important;   /* Slightly lighter on hover */
+      }
 
     </style>
     """,

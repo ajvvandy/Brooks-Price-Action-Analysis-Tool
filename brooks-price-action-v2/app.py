@@ -33,28 +33,83 @@ import html  # stdlib html escaping
 # =============================
 st.set_page_config(page_title="Brooks-Price-Action-Analysis-Tool", layout="wide")
 
-# Force white background + centered title via CSS
 st.markdown(
     """
     <style>
-      .stApp { background: #ffffff !important; }
-      header, .stDeployButton { visibility: hidden; }
-      /* Center title container */
-      .center-title { text-align: center; margin-top: 8px; margin-bottom: 2px; }
-      .subtitle-row { display: flex; justify-content: center; align-items: center; gap: 12px; }
-      .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; }
-      .timebox { font-weight: 600; font-size: 0.95rem; }
-      .badge { padding: 4px 10px; border-radius: 999px; font-weight: 700; }
-      .open { background:#e6ffed; color:#067d3f; border:1px solid #bff3cb; }
-      .closed { background:#ffefef; color:#a13333; border:1px solid #f3c0c0; }
-      .card { border:1px solid #e7e7e7; border-radius: 12px; padding: 14px; }
-      .card h3 { margin: 0 0 8px 0; }
-      .strategy { font-size: 1.2rem; font-weight: 800; }
-      .score { font-weight: 800; }
+      /* 🌕 GLOBAL APP STYLING */
+      .stApp {
+          background-color: #ffffff !important; /* White background */
+          color: #000000 !important;            /* Black text */
+      }
+
+      /* Streamlit widgets & text */
+      h1, h2, h3, h4, h5, h6, p, div, span, label {
+          color: #000000 !important;
+      }
+
+      /* Title */
+      .center-title {
+          text-align: center;
+          margin-top: 8px;
+          margin-bottom: 2px;
+          color: #000000 !important;
+      }
+
+      /* Top bar elements */
+      .timebox {
+          font-weight: 600;
+          font-size: 0.95rem;
+          color: #000000 !important;
+      }
+
+      /* Market status badges */
+      .badge {
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-weight: 700;
+      }
+      .open {
+          background: #e6ffed;
+          color: #067d3f;
+          border: 1px solid #bff3cb;
+      }
+      .closed {
+          background: #ffefef;
+          color: #a13333;
+          border: 1px solid #f3c0c0;
+      }
+
+      /* Card Styling */
+      .card {
+          border: 1px solid #e7e7e7;
+          border-radius: 12px;
+          padding: 14px;
+          background-color: #ffffff;
+          color: #000000 !important;
+      }
+
+      /* Headings inside cards */
+      .card h3 {
+          margin: 0 0 8px 0;
+          color: #000000 !important;
+      }
+
+      /* Strategy text */
+      .strategy {
+          font-size: 1.2rem;
+          font-weight: 800;
+          color: #000000 !important;
+      }
+
+      .score {
+          font-weight: 800;
+          color: #000000 !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 
 # Auto-refresh every 60s (JS fallback if plugin unavailable)
 try:

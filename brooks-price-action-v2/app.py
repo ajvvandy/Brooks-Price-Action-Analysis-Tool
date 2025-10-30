@@ -376,10 +376,11 @@ def measured_move_targets(day: pd.DataFrame) -> Tuple[Optional[float], Optional[
         target = float(day.loc[pb_end_idx, "Close"] - leg)
         return None, target
 
+
 # ========= Day Outlook (probabilistic) =========
 
 def day_outlook_prediction(overlap: float, always_in: str, by18: dict, or_info: dict) -> dict:
-    # Base: range probability from overlap
+    # Base: range probability from overlap (0 trendy → 1 rangy)
     range_prob = float(np.clip(overlap, 0.0, 1.0))
     trend_pool = 1.0 - range_prob
     bull = bear = 0.5 * trend_pool
@@ -408,84 +409,169 @@ def day_outlook_prediction(overlap: float, always_in: str, by18: dict, or_info: 
     label = max(probs, key=probs.get)
     return {"label": label, "bull": bull, "range": range_prob, "bear": bear}
 
-# ========= Strategy Suggestion with score =========
+
+# ========= Brooks Day-Type + Text Blocks =========
+
+def classify_day_type(or_info: dict, overlap: float, always_in: str) -> str:
+    """Lightweight Brooks day-type classifier."""
+    if overlap >= 0.7:
+        return "Range Day"
+    if overlap <= 0.25 and always_in in ("bull", "bear"):
+        return "Trend from the Open"
+    if 0.25 < overlap < 0.7 and always_in in ("bull", "bear"):
+        return "Spike & Channel"
+    return "Trending Trading Range"
+
+
+def opening_range_blurb(or_info: dict, by18: dict) -> str:
+    """Crisp 3-sentence OR/Bar-18 blurb."""
+    s1 = f"The opening range (first {or_info['bars']} bars) set initial support/resistance at {or_info['high']:.2f} / {or_info['low']:.2f}."
+    status = {"inside":"is inside","above":"has broken above","below":"has broken below"}[or_info["status"]]
+    s2 = f"Price {status} the range, shaping whether breakouts run or revert to the midpoint."
+    if by18.get("enough_bars"):
+        hi_hold = "still the day high" if by18["high_still_day_high"] else "not the day high"
+        lo_hold = "still the day low"  if by18["low_still_day_low"]  else "not the day low"
+        s3 = f"By Bar 18, the morning high is {hi_hold} and the morning low is {lo_hold}."
+    else:
+        s3 = "Bar-18 context is not available yet."
+    return f"{s1} {s2} {s3}"
+
+
+def end_of_day_review(day: pd.DataFrame,
+                      or_info: dict,
+                      by18: dict,
+                      mm_up: Optional[float],
+                      mm_dn: Optional[float],
+                      day_type: str,
+                      outlook: dict) -> str:
+    """Concise EOD card when market is closed."""
+    close = float(day["Close"].iloc[-1])
+    lines = []
+    lines.append(f"**Day Type:** {day_type}")
+    lines.append(opening_range_blurb(or_info, by18))
+
+    mm_bits = []
+    if mm_up is not None: mm_bits.append(f"MM↑ {mm_up:.2f} (Δ {mm_up - close:+.2f} vs close)")
+    if mm_dn is not None: mm_bits.append(f"MM↓ {mm_dn:.2f} (Δ {close - mm_dn:+.2f} vs close)")
+    if mm_bits:
+        lines.append("**Measured Move:** " + " • ".join(mm_bits))
+
+    lines.append(f"**Model Outlook:** Bull {outlook['bull']:.0%} • Range {outlook['range']:.0%} • Bear {outlook['bear']:.0%}")
+
+    # What likely worked
+    tips = []
+    if or_info["status"] == "inside":
+        tips.append("Fades toward OR midpoint and quick profits at edges.")
+    else:
+        tips.append("With-trend pullbacks to OR edge / EMA20.")
+    if by18.get("enough_bars"):
+        if by18["high_still_day_high"]: tips.append("Fading tests of the morning high until a clean breakout.")
+        if by18["low_still_day_low"]:  tips.append("Fading tests of the morning low until a clean breakdown.")
+    if day_type == "Range Day":
+        tips.append("Expect failed breakouts; first breakout often reverses.")
+    lines.append("**What likely worked:** " + " ".join(tips))
+    return "\n\n".join(lines)
+
+
+# ========= Strategy Suggestion (more options, granular score) =========
+
+def _near(x: float, y: float, tol: float) -> bool:
+    return abs(x - y) <= tol
+
 
 def strategy_suggestion(day: pd.DataFrame, or_info: dict, by18: dict, always_in: str, outlook: dict) -> dict:
+    """
+    Returns a dict with:
+      - label: concrete setup suggestion
+      - score: 0..1 confidence (continuous, no hard floors)
+      - rationale: short reason
+    Strategies considered:
+      1) Fade toward OR midpoint (inside OR)
+      2) Buy pullback to OR high / EMA20 (OR break up)
+      3) Sell pullback to OR low / EMA20 (OR break down)
+      4) Fade failed OR breakout (back inside after poke)
+      5) Buy pullback near morning low (Bar-18 hold)
+      6) Sell pullback near morning high (Bar-18 hold)
+    """
     last = float(day["Close"].iloc[-1])
-    rng = max(1e-9, float(day["High"].max() - day["Low"].min()))
+    hi = float(day["High"].max()); lo = float(day["Low"].min())
+    rng = max(1e-9, hi - lo)
+    near_or_hi = _near(last, or_info["high"], 0.25 * (or_info["high"] - or_info["low"]))
+    near_or_lo = _near(last, or_info["low"], 0.25 * (or_info["high"] - or_info["low"]))
 
+    # Base scoring components
+    bull_p = float(outlook["bull"]); bear_p = float(outlook["bear"]); range_p = float(outlook["range"])
+    trend_strength = max(bull_p, bear_p)
+
+    # Default
     label = "Wait for clarity"
-    rationale = "Sideways conditions"
-    score = 0.5
+    rationale = "Sideways/uncertain context."
+    base = 0.45
 
-    # Opening Range scenarios
+    # 1) Inside OR → fade to mid (first breakout often fails)
     if or_info["status"] == "inside":
-        # Fade to OR mid or await breakout
-        label = "Fade toward OR mid or wait for clean OR breakout"
-        rationale = "Price inside OR; breakouts often fail once before trend forms."
-        score = 0.55
-    elif or_info["status"] == "above":
+        label = "Fade toward OR midpoint"
+        rationale = "Price is inside OR; early breakouts often fail once."
+        base = 0.55
+
+    # 2/3) Breakout + pullback to OR edge / EMA20
+    if or_info["status"] == "above":
         label = "Buy pullback to OR high / EMA20"
-        rationale = "Breakout above OR; pullbacks often find support near OR high."
-        score = 0.68
+        rationale = "Broke above OR; pullbacks often find support at OR edge."
+        # Stronger if Always-In bull and bull_p high
+        base = 0.60 + 0.10 * (always_in == "bull") + 0.10 * bull_p
     elif or_info["status"] == "below":
         label = "Sell pullback to OR low / EMA20"
-        rationale = "Breakout below OR; pullbacks often find resistance near OR low."
-        score = 0.68
+        rationale = "Broke below OR; pullbacks often find resistance at OR edge."
+        base = 0.60 + 0.10 * (always_in == "bear") + 0.10 * bear_p
 
-    # Bar-18 context
+    # 4) Failed OR breakout (back inside after being outside)
+    was_above = (day["Close"] > or_info["high"]).any()
+    was_below = (day["Close"] < or_info["low"]).any()
+    if or_info["status"] == "inside" and (was_above or was_below):
+        label = "Fade failed OR breakout toward OR midpoint"
+        rationale = "Breakout failed; mean-reversion to OR mid is common."
+        base = max(base, 0.62 + 0.08 * range_p)
+
+    # 5/6) Bar-18 holds near extreme → pullback entry
+    bump_b18 = 0.0
     if by18.get("enough_bars"):
         near_hi18 = abs(last - by18["high_at18"]) <= 0.2 * rng
         near_lo18 = abs(last - by18["low_at18"]) <= 0.2 * rng
-        if by18.get("low_still_day_low") and near_lo18:
+        if by18["low_still_day_low"] and near_lo18:
             label = "Buy pullback near morning low (Bar-18 hold)"
-            rationale = "Morning low still stands; pullback entries often work unless clean breakdown."
-            score = 0.75
-        if by18.get("high_still_day_high") and near_hi18:
+            rationale = "Morning low still stands; pullbacks near it often bounce."
+            bump_b18 = 0.12
+        if by18["high_still_day_high"] and near_hi18:
             label = "Sell pullback near morning high (Bar-18 hold)"
-            rationale = "Morning high still stands; pullback entries often work unless clean breakout."
-            score = 0.75
+            rationale = "Morning high still stands; pullbacks near it often sell off."
+            bump_b18 = 0.12
 
-    # Bias integration
-    if outlook["label"] == "Bull Day":
-        score = max(score, 0.72)
-    elif outlook["label"] == "Bear Day":
-        score = max(score, 0.72)
-    else:  # Range Day
-        score = max(score, 0.60)
-
+    # Final score blend (continuous)
+    score = (
+        0.40 * base +
+        0.30 * trend_strength +
+        0.15 * (1.0 - range_p) +
+        0.15 * bump_b18
+    )
     return {"label": label, "score": round(float(np.clip(score, 0.0, 1.0)), 2), "rationale": rationale}
 
-# ========= Summary Generation =========
+
+# ========= Summary / Snapshot =========
 
 def summary_text(symbol: str, or_info: dict, by18: dict, outlook: dict, market_open: bool) -> str:
-    parts: List[str] = []
-    # 3-sentence core
-    parts.append(
-        f"Opening range (first {or_info['bars']} bars) set {or_info['high']:.2f}/{or_info['low']:.2f} as S/R; "
-        f"price is {or_info['status']} the range."
-    )
+    # Exactly 3 sentences, intuitive
+    s1 = f"Opening range (first {or_info['bars']} bars) set {or_info['high']:.2f}/{or_info['low']:.2f} as key levels."
+    status = {"inside":"is trading inside","above":"broke above","below":"broke below"}[or_info["status"]]
+    s2 = f"Price {status} the range, which guides whether breakouts run or fade to the midpoint."
     if by18.get("enough_bars"):
-        hi_txt = "still the day high" if by18.get("high_still_day_high") else "not the day high"
-        lo_txt = "still the day low" if by18.get("low_still_day_low") else "not the day low"
-        parts.append(f"By Bar 18, morning high is {hi_txt} and morning low is {lo_txt}.")
+        hi_hold = "still the day high" if by18["high_still_day_high"] else "not the day high"
+        lo_hold = "still the day low"  if by18["low_still_day_low"]  else "not the day low"
+        s3 = f"By Bar 18, the morning high is {hi_hold} and the morning low is {lo_hold}."
     else:
-        parts.append("Bar-18 context not established yet.")
-    parts.append(
-        f"Implication: **{outlook['label']}** bias (Bull {outlook['bull']:.0%} • Range {outlook['range']:.0%} • Bear {outlook['bear']:.0%})."
-    )
+        s3 = "Bar-18 context is not established yet."
+    return " ".join([s1, s2, s3])
 
-    # Brooks concepts list in prose
-    parts.append(
-        "We evaluate Bar 1/2 impulse, trend from the open, wedge/DT/DB/MTR patterns, measured-move projections, "
-        "and leg counting (second legs, three-push wedges). Day types considered: Spike & Channel, Range, Trend Reversal, "
-        "and Trending Trading Range."
-    )
-
-    if not market_open:
-        parts.append("Market closed: overview reflects the full session; Bar-18 and breakout assessments are final.")
-
-    return " ".join(parts)
 
 # =============================
 # Main
@@ -504,7 +590,8 @@ if go and symbol:
         day = df_all[df_all["Date"] == last_date].copy()
         if day.empty and len(df_all) > 0:
             day = df_all.tail(78).copy()
-        day = day.drop(columns=["Date"]) if "Date" in day.columns else day
+        if "Date" in day.columns:
+            day = day.drop(columns=["Date"])
 
         # Compute metrics
         always, ema20, ema50 = always_in_state(day)
@@ -513,36 +600,50 @@ if go and symbol:
         ovlp = overlap_score(day, 24)
         mm_up, mm_dn = measured_move_targets(day)
         outlook = day_outlook_prediction(ovlp, always, by18, or_info)
-        strat = strategy_suggestion(day, or_info, by18, always, outlook)
+        day_type = classify_day_type(or_info, ovlp, always)
 
-        # Strategy card
+        # Market flag (if not defined earlier, default to False to avoid intraday suggestions after hours)
+        market_open_state = bool(globals().get("market_open", False))
+
+        # --- Snapshot (always show)
         st.markdown("""
         <div class="card">
-          <h3>Recommended Strategy</h3>
-          <div class="strategy">{label}</div>
-          <div class="score">Score: {score}</div>
-          <div style="margin-top:6px; color:#555;">{rationale}</div>
+          <h3>Session Snapshot</h3>
+          <div>{snapshot}</div>
         </div>
-        """.format(label=html.escape(str(strat["label"]), quote=True),
-            score=strat["score"],
-            rationale=html.escape(str(strat["rationale"]), quote=True)),
+        """.format(snapshot=html.escape(summary_text(symbol, or_info, by18, outlook, market_open_state), quote=True)),
         unsafe_allow_html=True)
 
-
-        # Summary
-        st.markdown("""
-        <div class="card" style="margin-top:12px;">
-          <h3>Summary</h3>
-          <div>{summary}</div>
-        </div>
-        """.format(summary=summary_text(symbol, or_info, by18, outlook, market_open)), unsafe_allow_html=True)
+        # --- Strategy (only if market open) or End-of-Day review (if closed)
+        if market_open_state:
+            strat = strategy_suggestion(day, or_info, by18, always, outlook)
+            st.markdown("""
+            <div class="card" style="margin-top:12px;">
+              <h3>Recommended Strategy</h3>
+              <div class="strategy">{label}</div>
+              <div class="score">Score: {score}</div>
+              <div style="margin-top:6px;">{rationale}</div>
+            </div>
+            """.format(
+                label=html.escape(str(strat["label"]), quote=True),
+                score=strat["score"],
+                rationale=html.escape(str(strat["rationale"]), quote=True)
+            ), unsafe_allow_html=True)
+        else:
+            eod = end_of_day_review(day, or_info, by18, mm_up, mm_dn, day_type, outlook)
+            st.markdown("""
+            <div class="card" style="margin-top:12px;">
+              <h3>End-of-Day Review</h3>
+              <div>{eod}</div>
+            </div>
+            """.format(eod=eod), unsafe_allow_html=True)
 
         # TradingView chart
         st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
         tradingview_widget(symbol, theme="light", height=560)
 
         # Market state note
-        if market_open:
+        if market_open_state:
             st.info("Market is open: setups adapt intraday based on OR status and Bar-18 developments.")
         else:
-            st.info("Market is closed: summary reflects end-of-day structure and Brooks heuristics accuracy.")
+            st.info("Market is closed: review reflects end-of-day structure and Brooks heuristics.")

@@ -26,6 +26,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 from streamlit.components.v1 import html as st_html
+import html  # stdlib html escaping
 
 # =============================
 # App Config + Styling
@@ -414,8 +415,11 @@ if go and symbol:
           <div class="score">Score: {score}</div>
           <div style="margin-top:6px; color:#555;">{rationale}</div>
         </div>
-        """.format(label=st._escape_html(strat["label"]), score=strat["score"], rationale=st._escape_html(strat["rationale"])),
+        """.format(label=html.escape(str(strat["label"]), quote=True),
+            score=strat["score"],
+            rationale=html.escape(str(strat["rationale"]), quote=True)),
         unsafe_allow_html=True)
+
 
         # Summary
         st.markdown("""

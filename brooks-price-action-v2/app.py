@@ -122,9 +122,6 @@ st.markdown(
           padding: 0.5rem 1.2rem !important;
       }
 
-      .stButton button:hover {
-          background-color: #333333 !important; /* Slightly lighter on hover */
-      }
       /* ✅ Analyze button style (white text, black background) */
       .analyze-btn button,
       div.stButton > button {

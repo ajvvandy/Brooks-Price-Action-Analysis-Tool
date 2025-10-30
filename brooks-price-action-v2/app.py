@@ -105,6 +105,7 @@ st.markdown(
           font-weight: 800;
           color: #000000 !important;
       }
+      
       /* Make the Analyze button text white */
       .stButton button {
           color: #ffffff !important;       /* White text */
@@ -189,6 +190,7 @@ with right:
 
 # Symbol input centered under title
 c1, c2, c3 = st.columns([1, 2, 1])
+
 with c2:
     symbol = st.text_input(
         "",
@@ -197,33 +199,8 @@ with c2:
         label_visibility="collapsed"
     ).strip().upper()
 
-    # Custom clickable text styled like a link or minimal button
-    analyze_clicked = st.markdown(
-        f"""
-        <style>
-        .analyze-link {{
-            color: white;
-            background-color: black;
-            padding: 8px 16px;
-            border-radius: 6px;
-            text-align: center;
-            display: inline-block;
-            font-weight: 600;
-            cursor: pointer;
-        }}
-        .analyze-link:hover {{
-            background-color: #333333;
-        }}
-        </style>
-        <p class="analyze-link" onclick="window.location.reload()">Analyze</p>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Wrap the button in a div to target it with CSS
-    st.markdown('<div class="analyze-btn">', unsafe_allow_html=True)
+    # Single Analyze button (white text)
     go = st.button("Analyze", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # =============================

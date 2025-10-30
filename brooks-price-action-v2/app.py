@@ -133,11 +133,6 @@ st.markdown(
           padding: 0.55rem 1.1rem !important;
       }
 
-      .analyze-btn button:hover,
-      div.stButton > button:hover {
-          background-color: #333333 !important;   /* Slightly lighter on hover */
-      }
-
       /* Force ONLY the Analyze button to white text on black, even if global text is black */
       .stApp .block-container div.stButton > button[kind="primary"],
       .stApp .block-container div.stButton > button[kind="primary"] *,

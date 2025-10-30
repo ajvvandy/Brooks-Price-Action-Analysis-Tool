@@ -357,24 +357,50 @@ def overlap_score(day: pd.DataFrame, window: int = 24) -> float:
 
 
 def measured_move_targets(day: pd.DataFrame) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Compute both upside and downside measured-move targets using the first-hour leg
+    and a simple pullback-end locator in the next segment. Returns (mm_up, mm_dn).
+    """
     if len(day) < 20:
         return None, None
+
+    open0 = float(day["Open"].iloc[0])
+
+    # First hour = first 12 five-minute bars
     first_hour = day.iloc[:12]
-    uptrend = first_hour["Close"].iloc[-1] > first_hour["Open"].iloc[0]
-    if uptrend:
-        leg = float(first_hour["High"].max() - day["Open"].iloc[0])
-        seg = day.iloc[12:20]
-        if seg.empty: return None, None
-        pb_end_idx = seg["Low"].rolling(4).min().idxmin()
-        target = float(day.loc[pb_end_idx, "Close"] + leg)
-        return target, None
-    else:
-        leg = float(day["Open"].iloc[0] - first_hour["Low"].min())
-        seg = day.iloc[12:20]
-        if seg.empty: return None, None
-        pb_end_idx = seg["High"].rolling(4).max().idxmax()
-        target = float(day.loc[pb_end_idx, "Close"] - leg)
-        return None, target
+    seg = day.iloc[12:20]
+    if seg.empty:
+        return None, None
+
+    # Leg sizes from the open
+    leg_up  = float(first_hour["High"].max() - open0)
+    leg_dn  = float(open0 - first_hour["Low"].min())
+
+    # Pullback endpoints in the next segment
+    # For an upside projection, find the lowest pullback before resumption
+    try:
+        pb_low_idx  = seg["Low"].rolling(4).min().idxmin()
+        base_up     = float(day.loc[pb_low_idx, "Close"])
+        mm_up       = base_up + max(0.0, leg_up)
+    except Exception:
+        mm_up = None
+
+    # For a downside projection, find the highest pullback before resumption down
+    try:
+        pb_high_idx = seg["High"].rolling(4).max().idxmax()
+        base_dn     = float(day.loc[pb_high_idx, "Close"])
+        mm_dn       = base_dn - max(0.0, leg_dn)
+    except Exception:
+        mm_dn = None
+
+    # If either leg is effectively zero, return None for that side
+    if leg_up <= 1e-9:
+        mm_up = None
+    if leg_dn <= 1e-9:
+        mm_dn = None
+
+    return mm_up, mm_dn
+
 
 
 # ========= Day Outlook (probabilistic) =========
@@ -568,14 +594,7 @@ def summary_text(
     mm_up: Optional[float] = None,
     mm_dn: Optional[float] = None,
 ) -> str:
-    """
-    Returns a sectioned HTML snapshot:
-      - Opening Range
-      - Bar-18 Heuristics
-      - Measured-Move Context
-      - Intraday Bias
-    """
-    # Safe helpers
+    """Sectioned HTML snapshot: Opening Range, Bar-18, Measured-Move, Intraday Bias."""
     def fmt(x, nd=2):
         try:
             return f"{float(x):.{nd}f}"
@@ -589,18 +608,18 @@ def summary_text(
     }
     status_txt = status_map.get(or_info.get("status"), "—")
 
-    # Bar-18 lines
+    # Bar-18 lines (NO leading spaces so Markdown doesn’t render a code block)
     if by18.get("enough_bars"):
         hi_hold = "still the day high" if by18.get("high_still_day_high") else "not the day high"
         lo_hold = "still the day low"  if by18.get("low_still_day_low")  else "not the day low"
-        bar18_lines = f"""
-          <li>Morning high is {hi_hold}.</li>
-          <li>Morning low is {lo_hold}.</li>
-        """
+        bar18_lines = (
+            "<li>Morning high is " + hi_hold + ".</li>"
+            "<li>Morning low is "  + lo_hold + ".</li>"
+        )
     else:
         bar18_lines = "<li>Bar-18 context is not established yet.</li>"
 
-    # Measured moves (optional)
+    # Measured moves
     mm_up_html = fmt(mm_up) if mm_up is not None else "—"
     mm_dn_html = fmt(mm_dn) if mm_dn is not None else "—"
 
@@ -609,12 +628,11 @@ def summary_text(
     bull = outlook.get("bull", 0.0); rng = outlook.get("range", 0.0); bear = outlook.get("bear", 0.0)
     bias_line = f"{bias_label} (Bull {bull:.0%} • Range {rng:.0%} • Bear {bear:.0%})"
 
-    # HTML snapshot
-    html_snapshot = f"""
+    return f"""
     <div>
       <strong>Opening Range:</strong>
       <ul style="margin-top:6px;">
-        <li>The first {or_info.get('bars', '—')} bars established <strong>{fmt(or_info.get('high'))}/{fmt(or_info.get('low'))}</strong> as key levels.</li>
+        <li>The first {or_info.get('bars','—')} bars established <strong>{fmt(or_info.get('high'))}/{fmt(or_info.get('low'))}</strong> as key levels.</li>
         <li>Price is <strong>{status_txt}</strong>, guiding whether breakouts run or fade toward the midpoint.</li>
       </ul>
 
@@ -635,7 +653,6 @@ def summary_text(
       </ul>
     </div>
     """
-    return html_snapshot
 
 
 # =============================

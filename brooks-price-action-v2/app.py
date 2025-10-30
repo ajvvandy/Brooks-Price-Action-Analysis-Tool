@@ -148,12 +148,7 @@ st.markdown(
           text-decoration: none !important;
       }
 
-      .stApp .block-container div.stButton > button[kind="primary"]:hover,
-      .stApp button[data-testid="baseButton-primary"]:hover {
-          background-color: #333333 !important;   /* hover shade */
-      }
-
-
+    
     </style>
     """,
     unsafe_allow_html=True,

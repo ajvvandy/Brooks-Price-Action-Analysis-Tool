@@ -36,6 +36,12 @@ st.set_page_config(page_title="Brooks-Price-Action-Analysis-Tool", layout="wide"
 st.markdown(
     """
     <style>
+    /* --- Global text color fix --- */
+      html, body, [class*="css"] {
+          color: #000000 !important;   /* Make all regular text black */
+          background-color: #ffffff !important; /* Keep background white */
+      }
+
       /* 🌕 GLOBAL APP STYLING */
       .stApp {
           background-color: #ffffff !important; /* White background */

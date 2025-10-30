@@ -188,6 +188,7 @@ with right:
     st.empty()
 
 # Symbol input centered under title
+c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
     symbol = st.text_input(
         "",

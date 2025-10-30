@@ -190,8 +190,18 @@ with right:
 # Symbol input centered under title
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
-    symbol = st.text_input("", value="AAPL", placeholder="Enter stock symbol (e.g., AAPL)", label_visibility="collapsed").strip().upper()
+    symbol = st.text_input(
+        "",
+        value="AAPL",
+        placeholder="Enter stock symbol (e.g., AAPL)",
+        label_visibility="collapsed"
+    ).strip().upper()
+
+    # Wrap the button in a div to target it with CSS
+    st.markdown('<div class="analyze-btn">', unsafe_allow_html=True)
     go = st.button("Analyze", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # =============================
 # Data Fetching
